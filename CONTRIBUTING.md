@@ -23,7 +23,7 @@ Thank you for contributing to MaksIT-RepoUtils. This repository contains reusabl
 ### Repository Layout
 
 - `src/*.psm1`: shared utility modules
-- `src/Release-Package`: plugin-driven release engine
+- `src/Release-Package`: plugin-driven release engine (`Release-Package.ps1`, `PluginSupport.psm1`, `EngineSupport.psm1`, `ReleaseContext.psm1`, `CorePlugins/`); semver is resolved from the `DotNetReleaseVersion` plugin `projectFiles`; `DotNetPack` / `DotNetQualityGate` use their own `projectFiles` (and optional `artifactsDir` on DotNetPack) when needed
 - `src/Generate-CoverageBadges`: coverage badge generator for README assets
 - `src/Force-AmendTaggedCommit`: utility for fixing the latest tagged release commit
 - `src/Update-RepoUtils`: updater that refreshes a local RepoUtils installation
@@ -71,7 +71,7 @@ Examples:
 
 ## Release Notes
 
-The main release workflow is handled by `src/Release-Package/Release-Package.ps1`. Supporting utilities include:
+The main release workflow is handled by `src/Release-Package/Release-Package.ps1` (see `src/Release-Package/README.md`). Supporting utilities include:
 
 - `src/Generate-CoverageBadges/Generate-CoverageBadges.ps1`
 - `src/Force-AmendTaggedCommit/Force-AmendTaggedCommit.ps1`

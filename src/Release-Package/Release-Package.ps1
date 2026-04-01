@@ -37,15 +37,15 @@
 
 .CONFIGURATION
     All settings are stored in scriptsettings.json:
-    - Plugins: Ordered plugin definitions and plugin-specific settings
+    - plugins: Ordered plugin definitions and plugin-specific settings
 
 .NOTES
     Plugin-specific behavior belongs in the plugin modules, not in this engine.
 #>
 
 # No parameters - behavior is controlled by configured plugin metadata:
-# - non-release branches -> Run only the plugins allowed for those branches
-# - release branches     -> Require a matching tag and allow release-stage plugins
+# - Branch filter: optional per-plugin "branches" (omit = any branch for publish plugins).
+# - "Release" branches (git tag required): union of publish plugins' branch lists, excluding * (default main).
 
 # Get the directory of the current script (for loading settings and relative paths)
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -80,14 +80,14 @@ if (-not (Test-Path $pluginSupportModulePath)) {
 
 Import-Module $pluginSupportModulePath -Force
 
-# Import DotNetProjectSupport module
-$dotNetProjectSupportModulePath = Join-Path $scriptDir "DotNetProjectSupport.psm1"
-if (-not (Test-Path $dotNetProjectSupportModulePath)) {
-    Write-Error "DotNetProjectSupport module not found at: $dotNetProjectSupportModulePath"
+# Import ReleaseContext module (semver resolution for the engine)
+$releaseContextModulePath = Join-Path $scriptDir "ReleaseContext.psm1"
+if (-not (Test-Path $releaseContextModulePath)) {
+    Write-Error "ReleaseContext module not found at: $releaseContextModulePath"
     exit 1
 }
 
-Import-Module $dotNetProjectSupportModulePath -Force
+Import-Module $releaseContextModulePath -Force
 
 # Import EngineSupport module
 $engineSupportModulePath = Join-Path $scriptDir "EngineSupport.psm1"
@@ -123,7 +123,7 @@ Write-Log -Level "STEP" -Message "==============================================
 #region Preflight
 
 $plugins = $configuredPlugins
-$engineContext = New-EngineContext -Plugins $plugins -ScriptDir $scriptDir -UtilsDir $utilsDir
+$engineContext = New-EngineContext -Plugins $plugins -ScriptDir $scriptDir -UtilsDir $utilsDir -Settings $settings
 Write-Log -Level "OK" -Message "All pre-flight checks passed!"
 $sharedPluginSettings = $engineContext
 
@@ -139,31 +139,31 @@ if ($plugins.Count -eq 0) {
 else {
     for ($pluginIndex = 0; $pluginIndex -lt $plugins.Count; $pluginIndex++) {
         $plugin = $plugins[$pluginIndex]
-        $pluginStage = Get-PluginStage -Plugin $plugin
+        $pluginStageLabel = Get-PluginStageLabel -Plugin $plugin
 
         if ((Test-IsPublishPlugin -Plugin $plugin) -and -not $releaseStageInitialized) {
             if (Test-PluginRunnable -Plugin $plugin -SharedSettings $sharedPluginSettings -PluginsDirectory $pluginsDir -WriteLogs:$false) {
                 $remainingPlugins = @($plugins[$pluginIndex..($plugins.Count - 1)])
-                Initialize-ReleaseStageContext -RemainingPlugins $remainingPlugins -SharedSettings $sharedPluginSettings -ArtifactsDirectory $engineContext.ArtifactsDirectory -Version $engineContext.Version
+                Initialize-ReleaseStageContext -RemainingPlugins $remainingPlugins -SharedSettings $sharedPluginSettings -ArtifactsDirectory $engineContext.artifactsDirectory -Version $engineContext.version
                 $releaseStageInitialized = $true
             }
         }
 
-        $continueOnError = $pluginStage -eq "Release"
+        $continueOnError = $pluginStageLabel -eq "release"
         Invoke-ConfiguredPlugin -Plugin $plugin -SharedSettings $sharedPluginSettings -PluginsDirectory $pluginsDir -ContinueOnError:$continueOnError
     }
 }
 
 if (-not $releaseStageInitialized) {
-    $noReleasePluginsLogLevel = if ($engineContext.IsNonReleaseBranch) { "INFO" } else { "WARN" }
-    Write-Log -Level $noReleasePluginsLogLevel -Message "No release plugins executed for branch '$($engineContext.CurrentBranch)'."
+    $noReleasePluginsLogLevel = if ($engineContext.isNonReleaseBranch) { "INFO" } else { "WARN" }
+    Write-Log -Level $noReleasePluginsLogLevel -Message "No release plugins executed for branch '$($engineContext.currentBranch)'."
 }
 
 #endregion
 
 #region Summary
 Write-Log -Level "OK" -Message "=================================================="
-if ($engineContext.IsNonReleaseBranch) {
+if ($engineContext.isNonReleaseBranch) {
     Write-Log -Level "OK" -Message "NON-RELEASE RUN COMPLETE"
 }
 else {
@@ -171,9 +171,9 @@ else {
 }
 Write-Log -Level "OK" -Message "=================================================="
 
-Write-Log -Level "INFO" -Message "Artifacts location: $($engineContext.ArtifactsDirectory)"
+Write-Log -Level "INFO" -Message "Artifacts location: $($engineContext.artifactsDirectory)"
 
-if ($engineContext.IsNonReleaseBranch) {
+if ($engineContext.isNonReleaseBranch) {
     $preferredReleaseBranch = Get-PreferredReleaseBranch -EngineContext $engineContext
     Write-Log -Level "INFO" -Message "To execute release-stage plugins, rerun from an allowed release branch such as '$preferredReleaseBranch'."
 }
@@ -181,3 +181,4 @@ if ($engineContext.IsNonReleaseBranch) {
 #endregion
 
 #endregion
+

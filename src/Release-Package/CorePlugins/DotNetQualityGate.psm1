@@ -3,12 +3,12 @@
 
 <#
 .SYNOPSIS
-    Quality gate plugin for validating release readiness.
+    .NET quality gate plugin for validating release readiness.
 
 .DESCRIPTION
-    This plugin evaluates quality constraints using shared test
-    results and project files. It enforces coverage thresholds
-    and checks for vulnerable packages before release plugins run.
+    Evaluates .NET-specific quality constraints: shared test results (from DotNetTest),
+    coverage thresholds, and `dotnet list package --vulnerable` on configured .csproj files.
+    Use stageLabel "qualityGate" in scriptsettings.json; plugin name is DotNetQualityGate.
 #>
 
 if (-not (Get-Command Import-PluginDependency -ErrorAction SilentlyContinue)) {
@@ -54,19 +54,30 @@ function Invoke-Plugin {
 
     Import-PluginDependency -ModuleName "Logging" -RequiredCommand "Write-Log"
     Import-PluginDependency -ModuleName "ScriptConfig" -RequiredCommand "Assert-Command"
+    Import-PluginDependency -ModuleName "ReleaseContext" -RequiredCommand "Resolve-RelativePaths"
 
     $pluginSettings = $Settings
-    $sharedSettings = $Settings.Context
+    $sharedSettings = $Settings.context
+    $scriptDir = $sharedSettings.scriptDir
     $coverageThresholdSetting = $pluginSettings.coverageThreshold
     $failOnVulnerabilitiesSetting = $pluginSettings.failOnVulnerabilities
-    $projectFiles = $sharedSettings.ProjectFiles
+
+    if ($pluginSettings.PSObject.Properties['projectFiles'] -and $null -ne $pluginSettings.projectFiles) {
+        $projectFiles = @(Resolve-RelativePaths -Value $pluginSettings.projectFiles -BasePath $scriptDir)
+    }
+    elseif ($sharedSettings.PSObject.Properties['projectFiles'] -and $null -ne $sharedSettings.projectFiles) {
+        $projectFiles = @($sharedSettings.projectFiles)
+    }
+    else {
+        $projectFiles = @()
+    }
     $testResult = $null
-    if ($sharedSettings.PSObject.Properties['TestResult']) {
-        $testResult = $sharedSettings.TestResult
+    if ($sharedSettings.PSObject.Properties['testResult']) {
+        $testResult = $sharedSettings.testResult
     }
 
     if ($null -eq $testResult) {
-        throw "QualityGate plugin requires test results. Run the DotNetTest plugin first."
+        throw "DotNetQualityGate plugin requires test results. Run the DotNetTest plugin first."
     }
 
     $coverageThreshold = 0
@@ -91,6 +102,10 @@ function Invoke-Plugin {
     $failOnVulnerabilities = $true
     if ($null -ne $failOnVulnerabilitiesSetting) {
         $failOnVulnerabilities = [bool]$failOnVulnerabilitiesSetting
+    }
+
+    if ($projectFiles.Count -eq 0) {
+        throw "DotNetQualityGate plugin requires projectFiles in plugin settings or projectFiles on shared context."
     }
 
     $vulnerabilities = Test-VulnerablePackagesInternal -ProjectFiles $projectFiles

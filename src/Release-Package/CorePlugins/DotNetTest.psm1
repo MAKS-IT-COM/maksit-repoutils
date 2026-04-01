@@ -29,10 +29,10 @@ function Invoke-Plugin {
     Import-PluginDependency -ModuleName "TestRunner" -RequiredCommand "Invoke-TestsWithCoverage"
 
     $pluginSettings = $Settings
-    $sharedSettings = $Settings.Context
+    $sharedSettings = $Settings.context
     $testProjectSetting = $pluginSettings.project
     $testResultsDirSetting = $pluginSettings.resultsDir
-    $scriptDir = $sharedSettings.ScriptDir
+    $scriptDir = $sharedSettings.scriptDir
 
     if ([string]::IsNullOrWhiteSpace($testProjectSetting)) {
         throw "DotNetTest plugin requires 'project' in scriptsettings.json."
@@ -61,7 +61,7 @@ function Invoke-Plugin {
         throw "Tests failed. $($testResult.Error)"
     }
 
-    $sharedSettings | Add-Member -NotePropertyName TestResult -NotePropertyValue $testResult -Force
+    $sharedSettings | Add-Member -NotePropertyName testResult -NotePropertyValue $testResult -Force
 
     Write-Log -Level "OK" -Message "  All tests passed!"
     Write-Log -Level "INFO" -Message "  Line Coverage:   $($testResult.LineRate)%"

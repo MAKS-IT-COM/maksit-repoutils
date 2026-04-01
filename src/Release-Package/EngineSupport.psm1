@@ -15,17 +15,17 @@ if (-not (Get-Command Get-CurrentBranch -ErrorAction SilentlyContinue)) {
     }
 }
 
-if (-not (Get-Command Get-PluginStage -ErrorAction SilentlyContinue) -or -not (Get-Command Test-IsPublishPlugin -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command Get-PluginStageLabel -ErrorAction SilentlyContinue) -or -not (Get-Command Test-IsPublishPlugin -ErrorAction SilentlyContinue)) {
     $pluginSupportModulePath = Join-Path $PSScriptRoot "PluginSupport.psm1"
     if (Test-Path $pluginSupportModulePath -PathType Leaf) {
         Import-Module $pluginSupportModulePath -Force
     }
 }
 
-if (-not (Get-Command New-DotNetReleaseContext -ErrorAction SilentlyContinue)) {
-    $dotNetProjectSupportModulePath = Join-Path $PSScriptRoot "DotNetProjectSupport.psm1"
-    if (Test-Path $dotNetProjectSupportModulePath -PathType Leaf) {
-        Import-Module $dotNetProjectSupportModulePath -Force
+if (-not (Get-Command Resolve-DotNetReleaseVersion -ErrorAction SilentlyContinue)) {
+    $releaseContextModulePath = Join-Path $PSScriptRoot "ReleaseContext.psm1"
+    if (Test-Path $releaseContextModulePath -PathType Leaf) {
+        Import-Module $releaseContextModulePath -Force
     }
 }
 
@@ -67,17 +67,17 @@ function Initialize-ReleaseStageContext {
     )
 
     Write-Log -Level "STEP" -Message "Verifying tag is pushed to remote..."
-    $remoteTagExists = Test-RemoteTagExists -Tag $SharedSettings.Tag -Remote "origin"
+    $remoteTagExists = Test-RemoteTagExists -Tag $SharedSettings.tag -Remote "origin"
     if (-not $remoteTagExists) {
-        Write-Log -Level "WARN" -Message "  Tag $($SharedSettings.Tag) not found on remote. Pushing..."
-        Push-TagToRemote -Tag $SharedSettings.Tag -Remote "origin"
+        Write-Log -Level "WARN" -Message "  Tag $($SharedSettings.tag) not found on remote. Pushing..."
+        Push-TagToRemote -Tag $SharedSettings.tag -Remote "origin"
     }
     else {
         Write-Log -Level "OK" -Message "  Tag exists on remote."
     }
 
-    if (-not $SharedSettings.PSObject.Properties['ReleaseDir'] -or [string]::IsNullOrWhiteSpace([string]$SharedSettings.ReleaseDir)) {
-        $SharedSettings | Add-Member -NotePropertyName ReleaseDir -NotePropertyValue $ArtifactsDirectory -Force
+    if (-not $SharedSettings.PSObject.Properties['releaseDir'] -or [string]::IsNullOrWhiteSpace([string]$SharedSettings.releaseDir)) {
+        $SharedSettings | Add-Member -NotePropertyName releaseDir -NotePropertyValue $ArtifactsDirectory -Force
     }
 }
 
@@ -90,62 +90,67 @@ function New-EngineContext {
         [string]$ScriptDir,
 
         [Parameter(Mandatory = $true)]
-        [string]$UtilsDir
+        [string]$UtilsDir,
+
+        [Parameter(Mandatory = $false)]
+        [psobject]$Settings
     )
 
-    $dotNetContext = New-DotNetReleaseContext -Plugins $Plugins -ScriptDir $ScriptDir
+    $version = (Resolve-DotNetReleaseVersion -Plugins $Plugins -ScriptDir $ScriptDir).version
+    $artifactsDirectory = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir '..\\..\\release'))
 
     $currentBranch = Get-CurrentBranch
+    # Branches that require a matching git tag (exclude wildcards; default to main if only * is used).
     $releaseBranches = @(
-        $Plugins |
-            Where-Object { Test-IsPublishPlugin -Plugin $_ } |
-            ForEach-Object { Get-PluginBranches -Plugin $_ } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            Select-Object -Unique
+        foreach ($p in ($Plugins | Where-Object { Test-IsPublishPlugin -Plugin $_ })) {
+            foreach ($b in (Get-PluginBranches -Plugin $p)) {
+                $b
+            }
+        }
     )
+    $releaseBranches = @($releaseBranches | Where-Object { $_ -ne '*' -and -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    if ($releaseBranches.Count -eq 0) {
+        $releaseBranches = @('main')
+    }
 
     $isReleaseBranch = $releaseBranches -contains $currentBranch
     $isNonReleaseBranch = -not $isReleaseBranch
 
     Assert-WorkingTreeClean -IsReleaseBranch:$isReleaseBranch
 
-    $version = $dotNetContext.Version
-
     if ($isReleaseBranch) {
         $tag = Get-CurrentCommitTag -Version $version
 
         if ($tag -notmatch '^v(\d+\.\d+\.\d+)$') {
-            Write-Error "Tag '$tag' does not match expected format 'vX.Y.Z' (e.g., v$version)."
+            Write-Error "Tag '$tag' does not match expected format 'vX.Y.Z' (e.g., v$($version))."
             exit 1
         }
 
         $tagVersion = $Matches[1]
         if ($tagVersion -ne $version) {
-            Write-Error "Tag version ($tagVersion) does not match the project version ($version)."
-            Write-Log -Level "WARN" -Message "  Either update the tag or the project version."
+            Write-Error "Tag version ($tagVersion) does not match the release version ($version)."
+            Write-Log -Level "WARN" -Message "  Either update the tag or the configured version (DotNetReleaseVersion.projectFiles)."
             exit 1
         }
 
-        Write-Log -Level "OK" -Message "  Tag found: $tag (matches project version)"
+        Write-Log -Level "OK" -Message "  Tag found: $tag (matches release version)"
     }
     else {
         $tag = "v$version"
-        Write-Log -Level "INFO" -Message "  Using version from the package project (no tag required on non-release branches)."
+        Write-Log -Level "INFO" -Message "  Using release version from configuration (no tag required on non-release branches)."
     }
 
     return [pscustomobject]@{
-        ScriptDir = $ScriptDir
-        UtilsDir = $UtilsDir
-        CurrentBranch = $currentBranch
-        Version = $version
-        Tag = $tag
-        ProjectFiles = $dotNetContext.ProjectFiles
-        ArtifactsDirectory = $dotNetContext.ArtifactsDirectory
-        IsReleaseBranch = $isReleaseBranch
-        IsNonReleaseBranch = $isNonReleaseBranch
-        ReleaseBranches = $releaseBranches
-        NonReleaseBranches = @()
-        PublishCompleted = $false
+        scriptDir = $ScriptDir
+        utilsDir = $UtilsDir
+        currentBranch = $currentBranch
+        version = $version
+        tag = $tag
+        artifactsDirectory = $artifactsDirectory
+        isReleaseBranch = $isReleaseBranch
+        isNonReleaseBranch = $isNonReleaseBranch
+        releaseBranches = $releaseBranches
+        publishCompleted = $false
     }
 }
 
@@ -155,11 +160,14 @@ function Get-PreferredReleaseBranch {
         [psobject]$EngineContext
     )
 
-    if ($EngineContext.ReleaseBranches.Count -gt 0) {
-        return $EngineContext.ReleaseBranches[0]
+    if ($EngineContext.releaseBranches.Count -gt 0) {
+        return $EngineContext.releaseBranches[0]
     }
 
     return "main"
 }
 
 Export-ModuleMember -Function Assert-WorkingTreeClean, Initialize-ReleaseStageContext, New-EngineContext, Get-PreferredReleaseBranch
+
+
+

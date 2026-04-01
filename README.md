@@ -9,6 +9,7 @@ MaksIT-RepoUtils is a PowerShell 7 toolkit for repository automation. It package
   - [Requirements](#requirements)
   - [Included Tools](#included-tools)
     - [Shared Modules](#shared-modules)
+    - [Release engine](#release-engine)
     - [Scripts](#scripts)
   - [Usage](#usage)
   - [Repository Layout](#repository-layout)
@@ -33,9 +34,18 @@ MaksIT-RepoUtils is a PowerShell 7 toolkit for repository automation. It package
 - `src/ScriptConfig.psm1`: script settings loading and command validation
 - `src/TestRunner.psm1`: test execution and coverage collection helpers
 
+### Release engine
+
+`src/Release-Package/` — plugin-driven release automation:
+
+- `Release-Package.ps1`: entry script; loads `scriptsettings.json` and runs plugins
+- `PluginSupport.psm1`, `EngineSupport.psm1`, `ReleaseContext.psm1`: orchestration, branch rules, and semver resolution via the `DotNetReleaseVersion` plugin (`projectFiles` → first `.csproj` `<Version>`)
+- `CorePlugins/*.psm1`: plugins (e.g. `DotNetReleaseVersion`, DotNetPack, GitHub, NuGet, DockerPush, HelmPush)
+
+See `src/Release-Package/README.md` for module layout.
+
 ### Scripts
 
-- `src/Release-Package/Release-Package.ps1`: plugin-driven release engine for repository packaging and publishing
 - `src/Generate-CoverageBadges/Generate-CoverageBadges.ps1`: generates SVG coverage badges for README assets
 - `src/Force-AmendTaggedCommit/Force-AmendTaggedCommit.ps1`: amends the latest tagged commit, recreates the tag, and force-pushes both
 - `src/Update-RepoUtils/Update-RepoUtils.ps1`: refreshes a local RepoUtils copy from the configured source repository
@@ -64,6 +74,12 @@ src/
   Force-AmendTaggedCommit/
   Generate-CoverageBadges/
   Release-Package/
+    Release-Package.ps1
+    PluginSupport.psm1
+    EngineSupport.psm1
+    ReleaseContext.psm1
+    CorePlugins/
+    CustomPlugins/
   Update-RepoUtils/
 ```
 
