@@ -6,9 +6,9 @@
     .NET test plugin for executing automated tests.
 
 .DESCRIPTION
-    This plugin resolves the configured .NET test project and optional
-    results directory, runs tests through TestRunner, and stores
-    the resulting test metrics in shared runtime context.
+    This plugin resolves one or more .NET test projects (`project` or `projects`)
+    and an optional results directory, runs tests through TestRunner, and stores
+    the resulting aggregated test metrics in shared runtime context.
 #>
 
 if (-not (Get-Command Import-PluginDependency -ErrorAction SilentlyContinue)) {
@@ -30,25 +30,36 @@ function Invoke-Plugin {
 
     $pluginSettings = $Settings
     $sharedSettings = $Settings.context
-    $testProjectSetting = $pluginSettings.project
     $testResultsDirSetting = $pluginSettings.resultsDir
     $scriptDir = $sharedSettings.scriptDir
 
-    if ([string]::IsNullOrWhiteSpace($testProjectSetting)) {
-        throw "DotNetTest plugin requires 'project' in scriptsettings.json."
+    $testProjectPaths = [System.Collections.Generic.List[string]]::new()
+    if ($pluginSettings.PSObject.Properties.Name -contains 'projects' -and $pluginSettings.projects) {
+        foreach ($rel in @($pluginSettings.projects)) {
+            if ([string]::IsNullOrWhiteSpace([string]$rel)) { continue }
+            $testProjectPaths.Add([System.IO.Path]::GetFullPath((Join-Path $scriptDir $rel.Trim())))
+        }
+    }
+    if ($testProjectPaths.Count -eq 0 -and $pluginSettings.project) {
+        $testProjectPaths.Add([System.IO.Path]::GetFullPath((Join-Path $scriptDir $pluginSettings.project)))
+    }
+    if ($testProjectPaths.Count -eq 0) {
+        throw "DotNetTest plugin requires 'project' or 'projects' in scriptsettings.json."
     }
 
-    $testProjectPath = [System.IO.Path]::GetFullPath((Join-Path $scriptDir $testProjectSetting))
     $testResultsDir = $null
     if (-not [string]::IsNullOrWhiteSpace($testResultsDirSetting)) {
         $testResultsDir = [System.IO.Path]::GetFullPath((Join-Path $scriptDir $testResultsDirSetting))
+    }
+    elseif ($testProjectPaths.Count -gt 1) {
+        $testResultsDir = [System.IO.Path]::GetFullPath((Join-Path $scriptDir "TestResults"))
     }
 
     Write-Log -Level "STEP" -Message "Running tests..."
 
     # Build a splatted hashtable so optional arguments can be added without duplicating the call site.
     $invokeTestParams = @{
-        TestProjectPath = $testProjectPath
+        TestProjectPath = @($testProjectPaths)
         Silent = $true
     }
     if ($testResultsDir) {

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [1.0.9] - 2026-04-01
+
+### Added
+
+- `TestRunner` (`Invoke-TestsWithCoverage`): accepts multiple test project paths; runs each project in order into one results directory; aggregates Cobertura line, branch, and method metrics across all `coverage.cobertura.xml` files; result object includes `CoverageFiles` and a semicolon-separated `CoverageFile` value suitable for ReportGenerator. Falls back to averaged root `line-rate` / `branch-rate` when summary counters are missing.
+- `Generate-CoverageBadges`: `paths.testProjects` (array) as the preferred setting; `paths.testProject` remains for a single project. Multiple projects use a shared `TestResults` folder next to the script when generating merged HTML reports.
+- Release-Package `DotNetTest`: `projects` (array of relative paths) or legacy `project` (string). With multiple projects and no `resultsDir`, defaults to `TestResults` under the Release-Package script folder.
+
+### Changed
+
+- Root `README.md` and sample `scriptsettings.json` comments describe the multi-project settings.
+
 ## [1.0.8] - 2026-04-01
 
 ### Changed

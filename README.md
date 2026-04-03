@@ -32,7 +32,7 @@ MaksIT-RepoUtils is a PowerShell 7 toolkit for repository automation. It package
 - `src/GitTools.psm1`: helpers for git-driven workflows
 - `src/Logging.psm1`: consistent structured console output
 - `src/ScriptConfig.psm1`: script settings loading and command validation
-- `src/TestRunner.psm1`: test execution and coverage collection helpers
+- `src/TestRunner.psm1`: test execution and coverage collection helpers (one or many test projects; Cobertura metrics are aggregated)
 
 ### Release engine
 
@@ -61,7 +61,7 @@ pwsh -File .\src\Force-AmendTaggedCommit\Force-AmendTaggedCommit.ps1 -DryRun
 pwsh -File .\src\Update-RepoUtils\Update-RepoUtils.ps1
 ```
 
-Each script reads its configuration from a local `scriptsettings.json` file in the same directory.
+Each script reads its configuration from a local `scriptsettings.json` file in the same directory. For coverage badges, prefer `paths.testProjects` (array of relative test project paths); `paths.testProject` remains supported for a single project. The Release-Package `DotNetTest` plugin accepts `projects` (array) or `project` (string).
 
 ## Repository Layout
 
